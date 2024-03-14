@@ -1,4 +1,3 @@
-conda-repo-cli==1.0.75
 conda-verify==3.4.2
 pandas-dq==1.29
 scikit-learn==1.3.0
