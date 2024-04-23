@@ -3,6 +3,11 @@ import pandas as pd
 import streamlit as st
 from sklearn.preprocessing import LabelEncoder
 import pickle
+from datetime import datetime
+import warnings
+
+# Ignore all warnings
+warnings.filterwarnings('ignore')
 
 # Load the predictor model from a pickle file
 model = pickle.load(open('model.pkl', 'rb'))
@@ -31,34 +36,53 @@ def main():
     </div>
     """
 
+    # Bringing in CHLA data
+    reference_df = pd.read_csv('CHLA_clean_data_until_2023.csv')
+    reference_df['APPT_DATE'] = pd.to_datetime(reference_df['APPT_DATE'])
+
+    max_df_date = max(reference_df['APPT_DATE'])
+    min_df_date = min(reference_df['APPT_DATE'])
+
     st.markdown(html_temp, unsafe_allow_html = True)
 
-    LEAD_TIME = st.text_input("LEAD_TIME","0")
-    APPT_TYPE_STANDARDIZE = st.selectbox("APPT_TYPE_STANDARDIZE", ["Follow-up","New","Others"])
-    APPT_NUM= st.text_input("APPT_NUM","0")
-    TOTAL_NUMBER_OF_CANCELLATIONS = st.text_input("TOTAL_NUMBER_OF_CANCELLATIONS","0")
-    TOTAL_NUMBER_OF_NOT_CHECKOUT_APPOINTMENT= st.text_input("TOTAL_NUMBER_OF_NOT_CHECKOUT_APPOINTMENT","0")
-    TOTAL_NUMBER_OF_SUCCESS_APPOINTMENT= st.text_input("TOTAL_NUMBER_OF_SUCCESS_APPOINTMENT","0")
-    DAY_OF_WEEK = st.selectbox("DAY_OF_WEEK",["1","2","3","4","5","6","7"])
-    AGE = st.text_input("AGE","0")
+    START_DATE  = st.date_input("Start date", 
+                           value=None, 
+                           min_value=min_df_date, 
+                           max_value=max_df_date, 
+                           key="start_date")
+    END_DATE  = st.date_input("End date", 
+                           value=None, 
+                           min_value=pd.Timestamp(START_DATE) if START_DATE else min_df_date, 
+                           max_value=max_df_date, 
+                           key="end_date")
+    
+    LOCATION = st.selectbox(
+    'Select a Location:',
+    list(reference_df['CLINIC'].unique())
+    )
 
     if st.button("Predict"):
-        data = {'LEAD_TIME': int(LEAD_TIME), 'APPT_TYPE_STANDARDIZE': APPT_TYPE_STANDARDIZE, 'APPT_NUM': int(APPT_NUM), 'TOTAL_NUMBER_OF_CANCELLATIONS': int(TOTAL_NUMBER_OF_CANCELLATIONS), 'TOTAL_NUMBER_OF_NOT_CHECKOUT_APPOINTMENT': int(TOTAL_NUMBER_OF_NOT_CHECKOUT_APPOINTMENT), 'TOTAL_NUMBER_OF_SUCCESS_APPOINTMENT': int(TOTAL_NUMBER_OF_SUCCESS_APPOINTMENT), 'DAY_OF_WEEK': int(DAY_OF_WEEK), 'AGE': int(AGE)}
-        # Convert the data into a DataFrame for easier manipulation
-        df = pd.DataFrame([data])
+        
+        # Formatting Date Inputs as Datetime objects
+        start_date_timestamp = pd.Timestamp(START_DATE)
+        end_date_timestamp = pd.Timestamp(END_DATE)
 
-        # Encode the categorical columns
-        df = encode_features(df, encoder_dict)
+        # Filtering data based on date inputs
+        output_df_all = reference_df[(reference_df['APPT_DATE'] >= start_date_timestamp) & (reference_df['APPT_DATE'] <= end_date_timestamp) & (reference_df['CLINIC'] == LOCATION)]
+        output_df = output_df_all[['LEAD_TIME', 'APPT_TYPE_STANDARDIZE', 'APPT_NUM', 'TOTAL_NUMBER_OF_CANCELLATIONS', 'TOTAL_NUMBER_OF_NOT_CHECKOUT_APPOINTMENT', 'TOTAL_NUMBER_OF_SUCCESS_APPOINTMENT', 'DAY_OF_WEEK', 'AGE']]
 
-        # Now, all your features should be numerical, and you can attempt prediction
+        # Encoding features from encoded dataset
+        df = encode_features(output_df, encoder_dict)
         features_list = df.values
 
-        # Make prediction
+        # Generating predictions from model
         prediction = model.predict(features_list)
-        if prediction[0] == 1:
-            st.success("This patient is likely to show up for the appointment")
-        else:
-            st.error("This patient is likely to not show up for the appointment")
+        output_df_all['PREDICTION'] = prediction
+        output_df_all['MRN'] = output_df_all['MRN'].astype(str)
+
+        # Output df
+        st.write(output_df_all[['MRN', 'APPT_DATE', 'PREDICTION']])
+
 
 if __name__ == '__main__':
     main()
